@@ -1,0 +1,19 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v4.2.1
+_src_path: https://github.com/jupyterlab/extension-template
+author_email: mkrassowski@quansight.com
+author_name: Michał Krassowski
+data_format: string
+file_extension: ''
+has_binder: true
+has_settings: false
+kind: frontend
+labextension_name: '@jupyterlab/transformers-completer'
+mimetype: ''
+mimetype_name: ''
+project_short_description: A JupyterLab extension.
+python_name: jupyterlab-transformers-completer
+repository: https://github.com/krassowski/jupyterlab-transformers-completer
+test: false
+viewer_name: ''
+
