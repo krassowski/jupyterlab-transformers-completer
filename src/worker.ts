@@ -40,6 +40,8 @@ class CodeCompletionPipeline {
   }
 }
 
+let sharedArray: Int32Array;
+
 // Listen for messages from the main thread
 self.addEventListener('message', async event => {
   const {
@@ -53,8 +55,17 @@ self.addEventListener('message', async event => {
     do_sample,
     num_return_sequences,
     idTokens,
-    action
+    action,
+    counter
   } = event.data;
+
+  if (action === 'initializeBuffer') {
+    const sharedBuffer = event.data.buffer;
+    sharedArray = new Int32Array(sharedBuffer);
+    console.log('Shared buffer initialized');
+    return;
+  }
+  const startCounter = counter;
 
   if (CodeCompletionPipeline.model !== model) {
     // Invalidate model if different
@@ -79,28 +90,47 @@ self.addEventListener('message', async event => {
     return;
   }
 
-  // Actually perform the code-completion
-  const output = await generator(text, {
-    max_new_tokens,
-    temperature,
-    top_k,
-    do_sample,
-    num_beams: num_return_sequences,
-    num_return_sequences,
-    // Allows for partial output
-    callback_function: (x: any) => {
-      for (let i = 0; i < x.length; i++) {
-        const output = generator.tokenizer.decode(x[i].output_token_ids, {
-          skip_special_tokens: true
-        });
-        self.postMessage({
-          status: 'update',
-          output: output.substring(text.length),
-          idToken: idTokens[i]
-        });
+  const generationCounter = sharedArray[0];
+  if (generationCounter !== startCounter) {
+    console.log('Skipping generation because new request was sent since');
+    return;
+  }
+
+  let output = [];
+  try {
+    // Actually perform the code-completion
+    output = await generator(text, {
+      max_new_tokens,
+      temperature,
+      top_k,
+      do_sample,
+      num_beams: num_return_sequences,
+      num_return_sequences,
+      // Allows for partial output
+      callback_function: (x: any) => {
+        const generationCounter = sharedArray[0];
+        if (generationCounter !== startCounter) {
+          throw Error('Execution interrupted');
+        }
+
+        for (let i = 0; i < x.length; i++) {
+          const output = generator.tokenizer.decode(x[i].output_token_ids, {
+            skip_special_tokens: true
+          });
+          self.postMessage({
+            status: 'update',
+            output: output.substring(text.length),
+            idToken: idTokens[i]
+          });
+        }
       }
-    }
-  });
+    });
+  } catch (e) {
+    self.postMessage({
+      status: 'exception',
+      idTokens: idTokens
+    });
+  }
 
   // Send the output back to the main thread
   for (let i = 0; i < output.length; i++) {
