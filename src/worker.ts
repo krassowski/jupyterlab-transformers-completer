@@ -1,143 +1,168 @@
-// Apache-2.0 license
-// Based on code by Joshua Lochner
 import type { Pipeline } from '@xenova/transformers';
-import type * as transformersModuleNamespace from '@xenova/transformers';
-type transformersModuleType = {
-  env: typeof transformersModuleNamespace.env;
-  pipeline: typeof transformersModuleNamespace.pipeline;
-};
+import type { transformersModule, ClientMessage as Message } from './types';
 
-/**
- * This class uses the Singleton pattern to ensure that only one instance of the pipeline is loaded.
- */
-class CodeCompletionPipeline {
-  static task = 'text-generation';
-  static model?: string;
-  static instance?: Promise<Pipeline>;
+// Note: neither importScripts nor module import worked, see:
+// https://github.com/webpack/webpack/issues/16633
+// https://github.com/webpack/webpack/issues/16173
+// https://github.com/jupyterlab/jupyterlab/issues/10197
+const transformers = (await import(
+  /* webpackIgnore: true */
+  // @ts-ignore
+  'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.2'
+)) as transformersModule;
 
-  static async getInstance(
-    progress_callback?: (message: any) => void
-  ): Promise<Pipeline> {
-    // note: neither importScripts nor module import worked, see:
-    // https://github.com/webpack/webpack/issues/16633
-    // https://github.com/webpack/webpack/issues/16173
-    const transformers = (await import(
-      /* webpackIgnore: true */
-      // @ts-ignore
-      'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.2'
-    )) as transformersModuleType;
+class Worker {
+  async handleMessage(event: MessageEvent) {
+    const data = event.data;
+    switch (data.action) {
+      case 'generate':
+        return this._generate(data as Message.IGenerate);
+      case 'configure':
+        return this._configure(data as Message.IConfigure);
+      case 'initializeBuffer':
+        return this._initializeBuffer(data as Message.IInitializeBuffer);
+      case 'initializeModel':
+        return this._initializeModel(data as Message.IInitializeModel);
+      case 'disposeModel':
+        return this._disposeModel(data as Message.IDisposeModel);
+      default:
+        console.error('Unhandled message', event);
+        break;
+    }
+  }
 
-    // @ts-ignore
-    transformers.env.allowLocalModels = false;
+  private async _generate(data: Message.IGenerate) {
+    const { model: modelName, text, idTokens, counter: startCounter } = data;
 
-    if (!this.instance) {
-      this.instance = transformers.pipeline(this.task, this.model, {
-        progress_callback
+    const sharedArray = this._sharedArray;
+    if (sharedArray === null) {
+      throw Error(
+        'Cannot generate before `initializeBuffer` message got processed'
+      );
+    }
+    const model = this._initializeModel({ model: modelName });
+    const generator = await model.instance;
+
+    const generationCounter = sharedArray[0];
+    if (generationCounter !== startCounter) {
+      console.log('Skipping generation because new request was sent since');
+      return;
+    }
+
+    let output = [];
+    try {
+      output = await generator(text, {
+        max_new_tokens: data.maxNewTokens,
+        temperature: data.temperature,
+        top_k: data.topK,
+        do_sample: data.doSample,
+        num_beams: data.generateN,
+        num_return_sequences: data.generateN,
+        callback_function: (x: any) => {
+          const generationCounter = sharedArray[0];
+          if (generationCounter !== startCounter) {
+            // TODO: use `stopping_condition` once available, see
+            // https://github.com/xenova/transformers.js/issues/341
+            throw Error('Execution interrupted');
+          }
+
+          for (let i = 0; i < x.length; i++) {
+            const output = generator.tokenizer.decode(x[i].output_token_ids, {
+              skip_special_tokens: true
+            });
+            self.postMessage({
+              status: 'update',
+              output: output.substring(text.length),
+              idToken: idTokens[i]
+            });
+          }
+        }
+      });
+    } catch (e: unknown) {
+      self.postMessage({
+        status: 'exception',
+        error: {
+          message: (e as Error).message
+        },
+        idTokens: idTokens
       });
     }
 
-    return this.instance;
-  }
-}
-
-let sharedArray: Int32Array;
-
-// Listen for messages from the main thread
-self.addEventListener('message', async event => {
-  const {
-    model,
-    text,
-    max_new_tokens,
-
-    // Generation parameters
-    temperature,
-    top_k,
-    do_sample,
-    num_return_sequences,
-    idTokens,
-    action,
-    counter
-  } = event.data;
-
-  if (action === 'initializeBuffer') {
-    const sharedBuffer = event.data.buffer;
-    sharedArray = new Int32Array(sharedBuffer);
-    console.log('Shared buffer initialized');
-    return;
-  }
-  const startCounter = counter;
-
-  if (CodeCompletionPipeline.model !== model) {
-    // Invalidate model if different
-    CodeCompletionPipeline.model = model;
-
-    const instance = CodeCompletionPipeline.instance;
-    if (instance) {
-      (await instance).dispose();
-      CodeCompletionPipeline.instance = undefined;
+    for (let i = 0; i < output.length; i++) {
+      self.postMessage({
+        status: 'complete',
+        output: output[i].generated_text.substring(text.length),
+        idToken: idTokens[i]
+      });
     }
   }
 
-  // Retrieve the code-completion pipeline. When called for the first time,
-  // this will load the pipeline and save it for future use.
-  const generator = await CodeCompletionPipeline.getInstance(x => {
-    // We also add a progress callback to the pipeline so that we can
-    // track model loading.
-    self.postMessage({ ...x, model });
-  });
-
-  if (action !== 'generate') {
-    return;
-  }
-
-  const generationCounter = sharedArray[0];
-  if (generationCounter !== startCounter) {
-    console.log('Skipping generation because new request was sent since');
-    return;
-  }
-
-  let output = [];
-  try {
-    // Actually perform the code-completion
-    output = await generator(text, {
-      max_new_tokens,
-      temperature,
-      top_k,
-      do_sample,
-      num_beams: num_return_sequences,
-      num_return_sequences,
-      // Allows for partial output
-      callback_function: (x: any) => {
-        const generationCounter = sharedArray[0];
-        if (generationCounter !== startCounter) {
-          throw Error('Execution interrupted');
-        }
-
-        for (let i = 0; i < x.length; i++) {
-          const output = generator.tokenizer.decode(x[i].output_token_ids, {
-            skip_special_tokens: true
-          });
-          self.postMessage({
-            status: 'update',
-            output: output.substring(text.length),
-            idToken: idTokens[i]
-          });
-        }
+  private _initializeModel(data: { model: string }): CompletionModel {
+    let model = this._completionModels.get(data.model);
+    if (model) {
+      return model;
+    }
+    model = new CompletionModel({
+      model: data.model,
+      onLoadingProgress: (progress: any) => {
+        self.postMessage({ ...progress, model: data.model });
       }
     });
-  } catch (e) {
-    self.postMessage({
-      status: 'exception',
-      idTokens: idTokens
+    this._completionModels.set(data.model, model);
+    return model;
+  }
+
+  private _configure(data: Message.IConfigure) {
+    // Allow to download the model from the hub.
+    transformers.env.allowLocalModels = data.allowLocalModels;
+  }
+
+  private _initializeBuffer(data: Message.IInitializeBuffer) {
+    this._sharedArray = new Int32Array(data.buffer);
+  }
+
+  private _disposeModel(data: Message.IDisposeModel) {
+    const model = this._completionModels.get(data.model);
+    if (!model) {
+      return;
+    }
+    this._completionModels.delete(data.model);
+    return model.dispose();
+  }
+
+  private _sharedArray: Int32Array | null = null;
+  private _completionModels: Map<string, CompletionModel> = new Map();
+}
+
+class CompletionModel {
+  constructor(options: CompletionModel.IOptions) {
+    this._model = options.model;
+    this._instance = transformers.pipeline(this._task, this._model, {
+      progress_callback: (progress: any) => {
+        options.onLoadingProgress(progress);
+      }
     });
   }
 
-  // Send the output back to the main thread
-  for (let i = 0; i < output.length; i++) {
-    self.postMessage({
-      status: 'complete',
-      output: output[i].generated_text.substring(text.length),
-      idToken: idTokens[i]
-    });
+  get instance() {
+    return this._instance;
   }
-});
+
+  async dispose() {
+    (await this._instance).dispose();
+  }
+
+  private _instance: Promise<Pipeline>;
+  private _task = 'text-generation';
+  private _model: string;
+}
+
+namespace CompletionModel {
+  export interface IOptions {
+    model: string;
+    onLoadingProgress: (progress: any) => void;
+  }
+}
+
+export const worker = new Worker();
+self.addEventListener('message', worker.handleMessage.bind(worker));

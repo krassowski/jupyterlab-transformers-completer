@@ -14,25 +14,31 @@ import type { ISettingRegistry } from '@jupyterlab/settingregistry';
 import { Notification } from '@jupyterlab/apputils';
 import { JSONValue, PromiseDelegate } from '@lumino/coreutils';
 import { Debouncer } from '@lumino/polling';
+import type { ClientMessage } from './types';
+import { formatFileSize } from './utils';
 
 interface ISettings {
   temperature: number;
-  model: string;
+  codeModel: string;
+  textModel: string;
   maxNewTokens: number;
   topK: number;
   doSample: boolean;
   generateN: number;
   debounceMilliseconds: number;
+  maxContextWindow: number;
 }
 
 const DEFAULT_SETTINGS: ISettings = {
-  model: 'Xenova/tiny_starcoder_py',
+  codeModel: 'Xenova/tiny_starcoder_py',
+  textModel: 'Xenova/tiny_starcoder_py',
   temperature: 0.5,
   doSample: false,
   topK: 5,
   maxNewTokens: 50,
   generateN: 2,
-  debounceMilliseconds: 0
+  debounceMilliseconds: 0,
+  maxContextWindow: 512
 };
 
 interface IOptions {
@@ -47,47 +53,67 @@ interface IStream {
 class TransformersInlineProvider implements IInlineCompletionProvider {
   constructor(protected options: IOptions) {
     const buffer = new SharedArrayBuffer(1024);
-    this._bufferArrayWrapper = new Int32Array(buffer);
-    options.worker.postMessage({
-      action: 'initializeBuffer',
-      buffer: buffer
-    });
+    this._sharedArray = new Int32Array(buffer);
     options.worker.addEventListener(
       'message',
       this.onMessageReceived.bind(this)
     );
+    this._postMessage({
+      action: 'initializeBuffer',
+      buffer: buffer
+    });
   }
 
   readonly identifier = '@krassowski/inline-completer';
   readonly name = 'Transformers powered completions';
 
   get schema(): ISettingRegistry.IProperty {
+    // full list of models: https://huggingface.co/models?pipeline_tag=text-generation&library=transformers.js
+    const codeModels = [
+      'none',
+      'Xenova/tiny_starcoder_py',
+      'Xenova/codegen-350M-mono',
+      'Xenova/codegen-350M-multi',
+      'Xenova/starcoderbase-1b-sft',
+      'Xenova/WizardCoder-1B-V1.0'
+    ];
+    const textModels = [
+      'none',
+      'Xenova/gpt2',
+      'Xenova/TinyLLama-v0',
+      'Xenova/LaMini-GPT-124M',
+      'Xenova/LaMini-Cerebras-111M',
+      'Xenova/opt-125m',
+      'Xenova/pythia-70m-deduped',
+      'Xenova/distilgpt2',
+      'Xenova/llama-160m'
+    ];
     return {
       properties: {
-        model: {
-          title: 'Model',
-          enum: [
-            // https://huggingface.co/bigcode/tiny_starcoder_py
-            'Xenova/tiny_starcoder_py',
-            // https://huggingface.co/Salesforce/codegen-350M-mono
-            'Xenova/codegen-350M-mono',
-            'Xenova/codegen-350M-multi'
-            //
-            // 'Xenova/starcoderbase-1b-sft',
-            // 'Xenova/WizardCoder-1B-V1.0'
-          ],
+        codeModel: {
+          title: 'Code model',
+          description: 'Model used in code cells and code files.',
+          enum: codeModels,
           type: 'string'
         },
+        textModel: {
+          title: 'Text model',
+          description:
+            'Model used in Markdown (cells and files) and plain text files.',
+          enum: textModels,
+          type: 'string'
+        },
+        // TODO temperature and friends should be per-model
         temperature: {
           minimum: 0,
           maximum: 1,
           type: 'number',
           title: 'Temperature',
-          description: 'The value used to module the next token probabilities'
+          description: 'The value used to module the next token probabilities.'
         },
         doSample: {
           type: 'boolean',
-          description: 'Whether to use sampling; use greedy decoding otherwise'
+          description: 'Whether to use sampling; use greedy decoding otherwise.'
         },
         topK: {
           minimum: 0,
@@ -95,13 +121,13 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
           type: 'number',
           title: 'Top k',
           description:
-            'The number of highest probability vocabulary tokens to keep for top-k-filtering'
+            'The number of highest probability vocabulary tokens to keep for top-k-filtering.'
         },
         maxNewTokens: {
           minimum: 1,
           maximum: 512,
           type: 'number',
-          title: 'Maximum number of new tokens'
+          title: 'Maximum number of new tokens.'
         },
         generateN: {
           minimum: 1,
@@ -113,7 +139,14 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
           minimum: 0,
           type: 'number',
           description:
-            'Time since the last key press to start generation (debouncer) in milliseconds'
+            'Time since the last key press to start generation (debouncer) in milliseconds.'
+        },
+        maxContextWindow: {
+          title: 'Maximum context window',
+          minimum: 1,
+          type: 'number',
+          description:
+            'At most how many characters should be provided to the model. Smaller context results in faster generation at a cost of less accurate suggestions.'
         }
       },
       default: DEFAULT_SETTINGS as any
@@ -128,10 +161,29 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
       this._settings.debounceMilliseconds ??
         DEFAULT_SETTINGS.debounceMilliseconds
     );
-    this.options.worker.postMessage({
-      action: 'initializeModel',
-      model: this._settings.model
-    });
+
+    this._switchModel(this._settings.codeModel, 'code');
+    this._switchModel(this._settings.textModel, 'text');
+  }
+
+  private _switchModel(newModel: string, type: 'code' | 'text') {
+    const oldModel = this._currentModels[type];
+    if (oldModel === newModel) {
+      return;
+    }
+    if (oldModel) {
+      this._postMessage({
+        action: 'disposeModel',
+        model: oldModel
+      });
+    }
+    if (newModel !== 'none') {
+      this._postMessage({
+        action: 'initializeModel',
+        model: newModel
+      });
+    }
+    this._currentModels[type] = newModel;
   }
 
   // TODO types
@@ -141,34 +193,49 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     // TODO: maybe only tick on update?
     this._tickWorker();
     switch (e.data.status) {
-      case 'initiate':
+      case 'initiate': {
         this._ready = new PromiseDelegate();
-        if (data.model !== this._lastModel) {
-          this._notificationId = Notification.info(
-            'Loading model' + data.model + ': fetching' + data.file
+        const message = `Loading ${data.model}: ${data.file}`;
+        if (this._loadingNotifications[data.model]) {
+          Notification.update({
+            id: this._loadingNotifications[data.model],
+            message,
+            autoClose: false
+          });
+        } else {
+          this._loadingNotifications[data.model] = Notification.emit(
+            message,
+            'in-progress',
+            { autoClose: false }
           );
-          this._lastModel = data.model;
         }
         break;
+      }
       case 'progress':
         Notification.update({
-          id: this._notificationId,
-          message:
-            'Loading model ' +
-            data.model +
-            ' ' +
-            Math.round(data.progress) +
-            '%',
+          id: this._loadingNotifications[data.model],
+          message: `Loading ${data.model}: ${data.file} ${Math.round(
+            data.progress
+          )}% (${formatFileSize(data.loaded, 1)}/${formatFileSize(
+            data.total
+          )})`,
           type: 'in-progress',
-          progress: data.progress
+          autoClose: false,
+          progress: data.progress / 100
         });
         break;
 
       case 'done':
-        Notification.dismiss(this._notificationId);
+        Notification.update({
+          id: this._loadingNotifications[data.model],
+          message: `Loaded ${data.file} for ${data.model}`,
+          type: 'success',
+          autoClose: false
+        });
         break;
 
       case 'ready':
+        Notification.dismiss(this._loadingNotifications[data.model]);
         this._ready.resolve(void 0);
         break;
 
@@ -200,6 +267,27 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
             }
           });
         }
+        this._streamPromises.delete(token);
+        break;
+      }
+      case 'exception': {
+        if (data.error?.message !== 'Execution interrupted') {
+          Notification.error(data.error?.message);
+          return;
+        }
+        // handle interruption
+        const token = data.idToken;
+        const delegate = this._streamPromises.get(token);
+        if (delegate) {
+          delegate.resolve({
+            done: true,
+            response: {
+              insertText: data.output
+            }
+          });
+        }
+        this._streamPromises.delete(token);
+        console.log('exception');
         break;
       }
     }
@@ -209,6 +297,12 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     request: CompletionHandler.IRequest,
     context: IInlineCompletionContext
   ): Promise<IInlineCompletionList<IInlineCompletionItem>> {
+    // TODO: if the debouncer is > timeout configured upstream this will fail; therefore the debouncer may be better moved upstream
+    // OR providers should be able to set the timeout and upstream should use the default or provider-set timeout.
+    // An argument against moving the debouncer upstream is that users may want to set different thresholds for different providers
+    // e.g. the history provider always knows the answer in an instant and is free, this provider is free but your computer fan may fire up
+    // and other providers may cost $$$.
+
     // do not even invoke the debouncer unless ready
     return await this._debouncer.invoke(request, context);
   }
@@ -217,13 +311,22 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
    * Send a tick to the worker with number of current generation counter.
    */
   private _tickWorker() {
-    Atomics.store(this._bufferArrayWrapper, 0, this._currentGeneration);
-    Atomics.notify(this._bufferArrayWrapper, 0, 1);
+    Atomics.store(this._sharedArray, 0, this._currentGeneration);
+    Atomics.notify(this._sharedArray, 0, 1);
   }
 
   private _abortPrevious() {
     this._currentGeneration++;
     this._tickWorker();
+  }
+
+  private _prefixFromRequest(request: CompletionHandler.IRequest): string {
+    const textBefore = request.text.slice(0, request.offset);
+    const prefix = textBefore.slice(
+      -Math.min(this._settings.maxContextWindow, textBefore.length)
+    );
+    console.log(prefix);
+    return prefix;
   }
 
   private async _fetch(
@@ -233,9 +336,13 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     await this._ready.promise;
     this._abortPrevious();
     this._streamPromises = new Map();
-    const multiLinePrefix = request.text.slice(0, request.offset);
-    const linePrefix = multiLinePrefix.split('\n').slice(-1)[0];
-    console.log(linePrefix);
+    console.log(request.mimeType);
+    const textMimeTypes = ['text/markdown', 'text/plain'];
+    const model = textMimeTypes.includes(request.mimeType)
+      ? this._settings.textModel
+      : this._settings.codeModel;
+
+    const prefix = this._prefixFromRequest(request);
     const items: IInlineCompletionItem[] = [];
     const idTokens = [];
     for (let i = 0; i < this._settings.generateN; i++) {
@@ -247,14 +354,14 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
         token: token
       });
     }
-    this.options.worker.postMessage({
-      model: this._settings.model,
-      text: multiLinePrefix,
-      max_new_tokens: this._settings.maxNewTokens,
+    this._postMessage({
+      model,
+      text: prefix,
+      maxNewTokens: this._settings.maxNewTokens,
       temperature: this._settings.temperature,
-      top_k: this._settings.topK,
-      do_sample: this._settings.doSample,
-      num_return_sequences: this._settings.generateN,
+      topK: this._settings.topK,
+      doSample: this._settings.doSample,
+      generateN: this._settings.generateN,
       idTokens,
       action: 'generate',
       counter: this._currentGeneration
@@ -273,17 +380,24 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     }
   }
 
-  private _notificationId: string = '';
+  private _postMessage(message: ClientMessage.Message) {
+    this.options.worker.postMessage(message);
+  }
+
+  private _currentModels: {
+    code?: string;
+    text?: string;
+  } = {};
+  private _loadingNotifications: Record<string, string> = {};
   private _settings: ISettings = DEFAULT_SETTINGS;
   private _streamPromises: Map<string, PromiseDelegate<IStream>> = new Map();
   private _ready = new PromiseDelegate();
   private _tokenCounter = 0;
-  private _lastModel = '';
   private _debouncer = new Debouncer(
     this._fetch.bind(this),
     DEFAULT_SETTINGS.debounceMilliseconds
   );
-  private _bufferArrayWrapper: Int32Array;
+  private _sharedArray: Int32Array;
   private _currentGeneration = 0;
 }
 
@@ -294,7 +408,7 @@ const worker = new Worker(new URL('./worker.js', import.meta.url));
  */
 const plugin: JupyterFrontEndPlugin<void> = {
   id: '@jupyterlab/transformers-completer:plugin',
-  description: 'A JupyterLab extension.',
+  description: 'An in-browser AI completion provider for JupyterLab.',
   requires: [ICompletionProviderManager],
   autoStart: true,
   activate: (
@@ -303,9 +417,6 @@ const plugin: JupyterFrontEndPlugin<void> = {
   ) => {
     const provider = new TransformersInlineProvider({ worker });
     providerManager.registerInlineProvider(provider);
-    console.log(
-      'JupyterLab extension @jupyterlab/transformers-completer is activated!'
-    );
   }
 };
 
