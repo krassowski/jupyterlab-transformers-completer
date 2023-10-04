@@ -31,7 +31,7 @@ interface ISettings {
 
 const DEFAULT_SETTINGS: ISettings = {
   codeModel: 'Xenova/tiny_starcoder_py',
-  textModel: 'Xenova/tiny_starcoder_py',
+  textModel: 'Xenova/gpt2',
   temperature: 0.5,
   doSample: false,
   topK: 5,
@@ -141,6 +141,8 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
           description:
             'Time since the last key press to start generation (debouncer) in milliseconds.'
         },
+        // TODO: characters are a poor proxy for number of tokens when whitespace are many (though a strictly conservative one).
+        // Words could be better but can be over-optimistic - one word canb e several tokens).
         maxContextWindow: {
           title: 'Maximum context window',
           minimum: 1,
@@ -155,7 +157,6 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
 
   configure(settings: { [property: string]: JSONValue }): void {
     this._settings = settings as any as ISettings;
-    console.log(this._settings);
     this._debouncer = new Debouncer(
       this._fetch.bind(this),
       this._settings.debounceMilliseconds ??
@@ -188,7 +189,6 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
 
   // TODO types
   onMessageReceived(e: any) {
-    console.log(e);
     const data = e.data;
     // TODO: maybe only tick on update?
     this._tickWorker();
@@ -287,7 +287,6 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
           });
         }
         this._streamPromises.delete(token);
-        console.log('exception');
         break;
       }
     }
@@ -325,7 +324,6 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     const prefix = textBefore.slice(
       -Math.min(this._settings.maxContextWindow, textBefore.length)
     );
-    console.log(prefix);
     return prefix;
   }
 
@@ -336,9 +334,11 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     await this._ready.promise;
     this._abortPrevious();
     this._streamPromises = new Map();
-    console.log(request.mimeType);
-    const textMimeTypes = ['text/markdown', 'text/plain'];
-    const model = textMimeTypes.includes(request.mimeType)
+
+    const textMimeTypes = ['text/x-markdown', 'text/plain'];
+    const isText = textMimeTypes.includes(request.mimeType);
+    // TODO add a setting to only invoke on text if explicitly asked (triggerKind = invoke)
+    const model = isText
       ? this._settings.textModel
       : this._settings.codeModel;
 
