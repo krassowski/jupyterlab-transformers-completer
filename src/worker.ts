@@ -7,6 +7,7 @@ import type { transformersModule, ClientMessage as Message } from './types';
 // https://github.com/jupyterlab/jupyterlab/issues/10197
 const transformers = (await import(
   /* webpackIgnore: true */
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.2'
 )) as transformersModule;

@@ -11,7 +11,7 @@ import {
   IInlineCompletionItem
 } from '@jupyterlab/completer';
 import type { ISettingRegistry } from '@jupyterlab/settingregistry';
-import { Notification } from '@jupyterlab/apputils';
+import { Notification, showErrorMessage } from '@jupyterlab/apputils';
 import { JSONValue, PromiseDelegate } from '@lumino/coreutils';
 import { Debouncer } from '@lumino/polling';
 import type { ClientMessage } from './types';
@@ -52,6 +52,14 @@ interface IStream {
 
 class TransformersInlineProvider implements IInlineCompletionProvider {
   constructor(protected options: IOptions) {
+    try {
+      SharedArrayBuffer;
+    } catch (e) {
+      showErrorMessage(
+        'SharedArrayBuffer not available',
+        'Server extension enabling `same-origin` and `require-corp` headers is required for jupyterlab-transformers-completer to access `SharedArrayBuffer` which is used to synchronously communicate with the language model WebWorker.'
+      );
+    }
     const buffer = new SharedArrayBuffer(1024);
     this._sharedArray = new Int32Array(buffer);
     options.worker.addEventListener(
@@ -272,7 +280,8 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
       }
       case 'exception': {
         if (data.error?.message !== 'Execution interrupted') {
-          Notification.error(data.error?.message);
+          Notification.error(`Worker error: ${data.error?.message}`);
+          console.error(data);
           return;
         }
         // handle interruption
@@ -338,9 +347,7 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     const textMimeTypes = ['text/x-markdown', 'text/plain'];
     const isText = textMimeTypes.includes(request.mimeType);
     // TODO add a setting to only invoke on text if explicitly asked (triggerKind = invoke)
-    const model = isText
-      ? this._settings.textModel
-      : this._settings.codeModel;
+    const model = isText ? this._settings.textModel : this._settings.codeModel;
 
     const prefix = this._prefixFromRequest(request);
     const items: IInlineCompletionItem[] = [];
