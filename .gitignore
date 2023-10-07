@@ -7,9 +7,10 @@ node_modules/
 *.egg-info/
 .ipynb_checkpoints
 *.tsbuildinfo
-jupyterlab-transformers-completer/labextension
+jupyterlab_transformers_completer/labextension
 # Version file is handled by hatchling
-jupyterlab-transformers-completer/_version.py
+jupyterlab_transformers_completer/_version.py
+.jupyter/
 
 # Created by https://www.gitignore.io/api/python
 # Edit at https://www.gitignore.io/?templates=python
