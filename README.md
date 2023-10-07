@@ -1,18 +1,43 @@
 # jupyterlab-transformers-completer
 
-[![Github Actions Status](https://github.com/krassowski/jupyterlab-transformers-completer/workflows/Build/badge.svg)](https://github.com/krassowski/jupyterlab-transformers-completer/actions/workflows/build.yml)[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/krassowski/jupyterlab-transformers-completer/main?urlpath=lab)
-A JupyterLab extension.
+[![Extension status](https://img.shields.io/badge/status-experimental-red 'not ready to be used')](https://jupyterlab-contrib.github.io/)
+[![Github Actions Status](https://github.com/krassowski/jupyterlab-transformers-completer/workflows/Build/badge.svg)](https://github.com/krassowski/jupyterlab-transformers-completer/actions/workflows/build.yml)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/krassowski/jupyterlab-transformers-completer/main?urlpath=lab)
+
+Inline completion provider using `tranformers.js` for JupyterLab
+
+This extension is currently aimed for developers of  JupyterLab extensions (and advanced JupyterLab users) to explore the proof of concept integration of the new inline completions API slotted for JupyterLab 4.1.
+
+The models included in this demonstration are not vetted for accuracy nor propriety and should not be deployed without further validation.
 
 ## Requirements
 
-- JupyterLab >= 4.0.0
+- JupyterLab >= 4.1.0 (not yet released)
+- A browser supporting:
+  - [`SharedArrayBuffer`](https://caniuse.com/sharedarraybuffer)
+  - [Web Workers](https://caniuse.com/webworkers)
+- `jupyter-server` to enable additional headers (`jupyverse` and `jupyterlite` not tested yet)
+
+When this extension is enabled, the server will return additional headers,
+which will prevent fetching external resources, for example the extension logos
+from GitHub will no longer load in the extension panel.
+
+The additional headers are used to enable synchronous communication with WebWorker via `SharedArrayBuffer`:
+
+```http
+Cross-Origin-Opener-Policy: same-origin,
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+
 
 ## Install
 
 To install the extension, execute:
 
 ```bash
-pip install jupyterlab-transformers-completer
+pip install git+https://github.com/krassowski/jupyterlab-transformers-completer.git#egg=jupyterlab-transformers-completer
+
 ```
 
 ## Uninstall
