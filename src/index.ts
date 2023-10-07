@@ -13,19 +13,12 @@ import {
 import type { ISettingRegistry } from '@jupyterlab/settingregistry';
 import { Notification, showErrorMessage } from '@jupyterlab/apputils';
 import { JSONValue, PromiseDelegate } from '@lumino/coreutils';
-import { Debouncer } from '@lumino/polling';
-import type { ClientMessage } from './types';
+import type { ClientMessage, WorkerMessage, IModelSettings } from './types';
 import { formatFileSize } from './utils';
 
-interface ISettings {
-  temperature: number;
+interface ISettings extends IModelSettings {
   codeModel: string;
   textModel: string;
-  maxNewTokens: number;
-  topK: number;
-  doSample: boolean;
-  generateN: number;
-  debounceMilliseconds: number;
   maxContextWindow: number;
 }
 
@@ -37,21 +30,13 @@ const DEFAULT_SETTINGS: ISettings = {
   topK: 5,
   maxNewTokens: 50,
   generateN: 2,
-  debounceMilliseconds: 0,
-  maxContextWindow: 512
+  maxContextWindow: 512,
+  diversityPenalty: 1,
+  repetitionPenalty: 1
 };
 
-interface IOptions {
-  worker: Worker;
-}
-
-interface IStream {
-  done: boolean;
-  response: IInlineCompletionItem;
-}
-
 class TransformersInlineProvider implements IInlineCompletionProvider {
-  constructor(protected options: IOptions) {
+  constructor(protected options: TransformersInlineProvider.IOptions) {
     try {
       SharedArrayBuffer;
     } catch (e) {
@@ -64,7 +49,7 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     this._sharedArray = new Int32Array(buffer);
     options.worker.addEventListener(
       'message',
-      this.onMessageReceived.bind(this)
+      this._onMessageReceived.bind(this)
     );
     this._postMessage({
       action: 'initializeBuffer',
@@ -135,24 +120,29 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
           minimum: 1,
           maximum: 512,
           type: 'number',
-          title: 'Maximum number of new tokens.'
+          title: 'Tokens limit',
+          description: 'Maximum number of new tokens.'
         },
         generateN: {
           minimum: 1,
           maximum: 10,
-          type: 'number'
-        },
-        debounceMilliseconds: {
-          title: 'Debouncer delay',
-          minimum: 0,
           type: 'number',
-          description:
-            'Time since the last key press to start generation (debouncer) in milliseconds.'
+          title: 'Number of candidates'
+        },
+        diversityPenalty: {
+          type: 'number',
+          title: 'Diversity penalty',
+          description: '1.0 means not penalty.'
+        },
+        repetitionPenalty: {
+          type: 'number',
+          title: 'Repetition penalty',
+          description: '1.0 means not penalty.'
         },
         // TODO: characters are a poor proxy for number of tokens when whitespace are many (though a strictly conservative one).
         // Words could be better but can be over-optimistic - one word canb e several tokens).
         maxContextWindow: {
-          title: 'Maximum context window',
+          title: 'Context window',
           minimum: 1,
           type: 'number',
           description:
@@ -165,178 +155,11 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
 
   configure(settings: { [property: string]: JSONValue }): void {
     this._settings = settings as any as ISettings;
-    this._debouncer = new Debouncer(
-      this._fetch.bind(this),
-      this._settings.debounceMilliseconds ??
-        DEFAULT_SETTINGS.debounceMilliseconds
-    );
-
     this._switchModel(this._settings.codeModel, 'code');
     this._switchModel(this._settings.textModel, 'text');
   }
 
-  private _switchModel(newModel: string, type: 'code' | 'text') {
-    const oldModel = this._currentModels[type];
-    if (oldModel === newModel) {
-      return;
-    }
-    if (oldModel) {
-      this._postMessage({
-        action: 'disposeModel',
-        model: oldModel
-      });
-    }
-    if (newModel !== 'none') {
-      this._postMessage({
-        action: 'initializeModel',
-        model: newModel
-      });
-    }
-    this._currentModels[type] = newModel;
-  }
-
-  // TODO types
-  onMessageReceived(e: any) {
-    const data = e.data;
-    // TODO: maybe only tick on update?
-    this._tickWorker();
-    switch (e.data.status) {
-      case 'initiate': {
-        this._ready = new PromiseDelegate();
-        const message = `Loading ${data.model}: ${data.file}`;
-        if (this._loadingNotifications[data.model]) {
-          Notification.update({
-            id: this._loadingNotifications[data.model],
-            message,
-            autoClose: false
-          });
-        } else {
-          this._loadingNotifications[data.model] = Notification.emit(
-            message,
-            'in-progress',
-            { autoClose: false }
-          );
-        }
-        break;
-      }
-      case 'progress':
-        Notification.update({
-          id: this._loadingNotifications[data.model],
-          message: `Loading ${data.model}: ${data.file} ${Math.round(
-            data.progress
-          )}% (${formatFileSize(data.loaded, 1)}/${formatFileSize(
-            data.total
-          )})`,
-          type: 'in-progress',
-          autoClose: false,
-          progress: data.progress / 100
-        });
-        break;
-
-      case 'done':
-        Notification.update({
-          id: this._loadingNotifications[data.model],
-          message: `Loaded ${data.file} for ${data.model}`,
-          type: 'success',
-          autoClose: false
-        });
-        break;
-
-      case 'ready':
-        Notification.dismiss(this._loadingNotifications[data.model]);
-        this._ready.resolve(void 0);
-        break;
-
-      case 'update': {
-        const token = data.idToken;
-        const delegate = this._streamPromises.get(token);
-        if (!delegate) {
-          console.warn('Completion updated but stream absent');
-        } else {
-          delegate.resolve({
-            done: false,
-            response: {
-              insertText: data.output
-            }
-          });
-        }
-        break;
-      }
-      case 'complete': {
-        const token = data.idToken;
-        const delegate = this._streamPromises.get(token);
-        if (!delegate) {
-          console.warn('Completion done but stream absent');
-        } else {
-          delegate.resolve({
-            done: true,
-            response: {
-              insertText: data.output
-            }
-          });
-        }
-        this._streamPromises.delete(token);
-        break;
-      }
-      case 'exception': {
-        if (data.error?.message !== 'Execution interrupted') {
-          Notification.error(`Worker error: ${data.error?.message}`);
-          console.error(data);
-          return;
-        }
-        // handle interruption
-        const token = data.idToken;
-        const delegate = this._streamPromises.get(token);
-        if (delegate) {
-          delegate.resolve({
-            done: true,
-            response: {
-              insertText: data.output
-            }
-          });
-        }
-        this._streamPromises.delete(token);
-        break;
-      }
-    }
-  }
-
   async fetch(
-    request: CompletionHandler.IRequest,
-    context: IInlineCompletionContext
-  ): Promise<IInlineCompletionList<IInlineCompletionItem>> {
-    // TODO: if the debouncer is > timeout configured upstream this will fail; therefore the debouncer may be better moved upstream
-    // OR providers should be able to set the timeout and upstream should use the default or provider-set timeout.
-    // An argument against moving the debouncer upstream is that users may want to set different thresholds for different providers
-    // e.g. the history provider always knows the answer in an instant and is free, this provider is free but your computer fan may fire up
-    // and other providers may cost $$$.
-
-    // do not even invoke the debouncer unless ready
-    return await this._debouncer.invoke(request, context);
-  }
-
-  /**
-   * Send a tick to the worker with number of current generation counter.
-   */
-  private _tickWorker() {
-    Atomics.store(this._sharedArray, 0, this._currentGeneration);
-    Atomics.notify(this._sharedArray, 0, 1);
-  }
-
-  private _abortPrevious() {
-    this._currentGeneration++;
-    this._tickWorker();
-  }
-
-  private _prefixFromRequest(request: CompletionHandler.IRequest): string {
-    const textBefore = request.text.slice(0, request.offset);
-    const prefix = textBefore.slice(
-      -Math.min(this._settings.maxContextWindow, textBefore.length)
-    );
-    return prefix;
-  }
-
-  private async _fetch(
     request: CompletionHandler.IRequest,
     context: IInlineCompletionContext
   ): Promise<IInlineCompletionList<IInlineCompletionItem>> {
@@ -369,6 +192,8 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
       topK: this._settings.topK,
       doSample: this._settings.doSample,
       generateN: this._settings.generateN,
+      repetitionPenalty: this._settings.repetitionPenalty,
+      diversityPenalty: this._settings.diversityPenalty,
       idTokens,
       action: 'generate',
       counter: this._currentGeneration
@@ -376,6 +201,9 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     return { items };
   }
 
+  /**
+   * Stream a reply for completion identified by given `token`.
+   */
   async *stream(token: string) {
     let done = false;
     while (!done) {
@@ -387,8 +215,188 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     }
   }
 
+  /**
+   * Handle message from the web worker.
+   */
+  private _onMessageReceived(event: MessageEvent) {
+    const data = event.data;
+    // TODO: maybe only tick on update?
+    this._tickWorker();
+    switch (data.status) {
+      case 'initiate': {
+        this._msgInitiate(data as WorkerMessage.IInitiate);
+        break;
+      }
+      case 'progress':
+        this._msgProgress(data as WorkerMessage.IProgress);
+        break;
+      case 'done':
+        this._msgDone(data as WorkerMessage.IDone);
+        break;
+      case 'ready':
+        this._msgReady(data as WorkerMessage.IReady);
+        break;
+      case 'update':
+        this._msgUpdate(data as WorkerMessage.IUpdate);
+        break;
+      case 'complete':
+        this._msgComplete(data as WorkerMessage.IComplete);
+        break;
+      case 'interrupted':
+        this._msgInterrupted(data as WorkerMessage.IGenerationError);
+        break;
+      case 'exception':
+        this._msgException(data as WorkerMessage.IGenerationError);
+        break;
+    }
+  }
+
+  private _msgInitiate(data: WorkerMessage.IInitiate) {
+    this._ready = new PromiseDelegate();
+    const message = `Loading ${data.model}: ${data.file}`;
+    if (this._loadingNotifications[data.model]) {
+      Notification.update({
+        id: this._loadingNotifications[data.model],
+        message,
+        autoClose: false
+      });
+    } else {
+      this._loadingNotifications[data.model] = Notification.emit(
+        message,
+        'in-progress',
+        { autoClose: false }
+      );
+    }
+  }
+
+  private _msgProgress(data: WorkerMessage.IProgress) {
+    Notification.update({
+      id: this._loadingNotifications[data.model],
+      message: `Loading ${data.model}: ${data.file} ${Math.round(
+        data.progress
+      )}% (${formatFileSize(data.loaded, 1)}/${formatFileSize(data.total)})`,
+      type: 'in-progress',
+      autoClose: false,
+      progress: data.progress / 100
+    });
+  }
+
+  private _msgDone(data: WorkerMessage.IDone) {
+    Notification.update({
+      id: this._loadingNotifications[data.model],
+      message: `Loaded ${data.file} for ${data.model}, compiling...`,
+      type: 'success',
+      autoClose: false
+    });
+  }
+
+  private _msgReady(data: WorkerMessage.IReady) {
+    Notification.dismiss(this._loadingNotifications[data.model]);
+    this._ready.resolve(void 0);
+  }
+
+  private _msgUpdate(data: WorkerMessage.IUpdate) {
+    const token = data.idToken;
+    const delegate = this._streamPromises.get(token);
+    if (!delegate) {
+      console.warn('Completion updated but stream absent');
+    } else {
+      delegate.resolve({
+        done: false,
+        response: {
+          insertText: data.output
+        }
+      });
+    }
+  }
+
+  private _msgComplete(data: WorkerMessage.IComplete) {
+    const token = data.idToken;
+    const delegate = this._streamPromises.get(token);
+    if (!delegate) {
+      console.warn('Completion done but stream absent');
+    } else {
+      delegate.resolve({
+        done: true,
+        response: {
+          insertText: data.output
+        }
+      });
+    }
+    this._streamPromises.delete(token);
+  }
+
+  private _msgInterrupted(data: WorkerMessage.IGenerationError) {
+    // handle interruption
+    for (const token of data.idTokens) {
+      const delegate = this._streamPromises.get(token);
+      if (delegate) {
+        delegate.reject(null);
+      }
+      this._streamPromises.delete(token);
+    }
+  }
+
+  private _msgException(data: WorkerMessage.IGenerationError) {
+    Notification.error(`Worker error: ${data.error?.message}`);
+    console.error(data);
+  }
+
+  /**
+   * Send a tick to the worker with number of current generation counter.
+   */
+  private _tickWorker() {
+    Atomics.store(this._sharedArray, 0, this._currentGeneration);
+    Atomics.notify(this._sharedArray, 0, 1);
+  }
+
+  /**
+   * Communicate to the worker that previous suggestion no longer needs to be generated.
+   */
+  private _abortPrevious() {
+    this._currentGeneration++;
+    this._tickWorker();
+  }
+
+  /**
+   * Extract prefix from request, accounting for context window limit.
+   */
+  private _prefixFromRequest(request: CompletionHandler.IRequest): string {
+    const textBefore = request.text.slice(0, request.offset);
+    const prefix = textBefore.slice(
+      -Math.min(this._settings.maxContextWindow, textBefore.length)
+    );
+    return prefix;
+  }
+
+  /**
+   * A type-guarded shorthand to post message to the worker.
+   */
   private _postMessage(message: ClientMessage.Message) {
     this.options.worker.postMessage(message);
+  }
+
+  /**
+   * Switch generative model for given `type` of content.
+   */
+  private _switchModel(newModel: string, type: 'code' | 'text') {
+    const oldModel = this._currentModels[type];
+    if (oldModel === newModel) {
+      return;
+    }
+    if (oldModel) {
+      this._postMessage({
+        action: 'disposeModel',
+        model: oldModel
+      });
+    }
+    if (newModel !== 'none') {
+      this._postMessage({
+        action: 'initializeModel',
+        model: newModel
+      });
+    }
+    this._currentModels[type] = newModel;
   }
 
   private _currentModels: {
@@ -400,15 +408,20 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
   private _streamPromises: Map<string, PromiseDelegate<IStream>> = new Map();
   private _ready = new PromiseDelegate();
   private _tokenCounter = 0;
-  private _debouncer = new Debouncer(
-    this._fetch.bind(this),
-    DEFAULT_SETTINGS.debounceMilliseconds
-  );
   private _sharedArray: Int32Array;
   private _currentGeneration = 0;
 }
 
-const worker = new Worker(new URL('./worker.js', import.meta.url));
+namespace TransformersInlineProvider {
+  export interface IOptions {
+    worker: Worker;
+  }
+}
+
+interface IStream {
+  done: boolean;
+  response: IInlineCompletionItem;
+}
 
 /**
  * Initialization data for the @jupyterlab/transformers-completer extension.
@@ -422,6 +435,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
     app: JupyterFrontEnd,
     providerManager: ICompletionProviderManager
   ) => {
+    const worker = new Worker(new URL('./worker.js', import.meta.url));
     const provider = new TransformersInlineProvider({ worker });
     providerManager.registerInlineProvider(provider);
   }

@@ -8,6 +8,17 @@ export type transformersModule = {
   pipeline: typeof transformersModuleNamespace.pipeline;
 };
 
+export interface IModelSettings {
+  temperature: number;
+  maxNewTokens: number;
+  topK: number;
+  doSample: boolean;
+  repetitionPenalty: number;
+  diversityPenalty: number;
+  // this a default for `num_return_sequences`, `num_beams` and `num_beam_groups`.
+  generateN: number;
+}
+
 export namespace ClientMessage {
   export interface IConfigure {
     action: 'configure';
@@ -28,16 +39,11 @@ export namespace ClientMessage {
     action: 'disposeModel';
     model: string;
   }
-  export interface IGenerate {
+  export interface IGenerate extends IModelSettings {
     action: 'generate';
     model: string;
     idTokens: string[];
     text: string;
-    maxNewTokens: number;
-    temperature: number;
-    topK: number;
-    doSample: boolean;
-    generateN: number;
     counter: number;
   }
   export type Message =
@@ -49,5 +55,39 @@ export namespace ClientMessage {
 }
 
 export namespace WorkerMessage {
-  // TODO
+  interface IModelLoadingMessage {
+    model: string;
+    file: string;
+  }
+  export interface IInitiate extends IModelLoadingMessage {
+    status: 'initiate';
+  }
+  export interface IProgress extends IModelLoadingMessage {
+    status: 'progress';
+    loaded: number;
+    total: number;
+    progress: number;
+  }
+  export interface IDone extends IModelLoadingMessage {
+    status: 'done';
+  }
+  export interface IReady extends IModelLoadingMessage {
+    status: 'ready';
+  }
+  interface ICompletionMessage {
+    idToken: string;
+    output: string;
+  }
+  export interface IUpdate extends ICompletionMessage {
+    status: 'update';
+  }
+  export interface IComplete extends ICompletionMessage {
+    status: 'complete';
+  }
+  export interface IGenerationError {
+    idTokens: string[];
+    error?: {
+      message: string;
+    };
+  }
 }

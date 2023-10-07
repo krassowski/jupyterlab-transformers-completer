@@ -1,5 +1,9 @@
 import type { Pipeline } from '@xenova/transformers';
-import type { transformersModule, ClientMessage as Message } from './types';
+import type {
+  transformersModule,
+  ClientMessage as Message,
+  WorkerMessage
+} from './types';
 
 // Note: neither importScripts nor module import worked, see:
 // https://github.com/webpack/webpack/issues/16633
@@ -52,6 +56,7 @@ class Worker {
 
     let output = [];
     try {
+      // see https://huggingface.co/docs/transformers.js/main/en/api/utils/generation#module_utils/generation.GenerationConfig
       output = await generator(text, {
         max_new_tokens: data.maxNewTokens,
         temperature: data.temperature,
@@ -59,6 +64,10 @@ class Worker {
         do_sample: data.doSample,
         num_beams: data.generateN,
         num_return_sequences: data.generateN,
+        repetition_penalty: data.repetitionPenalty,
+        diversity_penalty: data.diversityPenalty,
+        // make the alternatives more diverse
+        num_beam_groups: data.generateN,
         callback_function: (x: any) => {
           const generationCounter = sharedArray[0];
           if (generationCounter !== startCounter) {
@@ -75,18 +84,28 @@ class Worker {
               status: 'update',
               output: output.substring(text.length),
               idToken: idTokens[i]
-            });
+            } as WorkerMessage.IUpdate);
           }
         }
       });
     } catch (e: unknown) {
-      self.postMessage({
-        status: 'exception',
+      const errorData = {
         error: {
           message: (e as Error).message
         },
-        idTokens: idTokens
-      });
+        idTokens
+      };
+      if ((e as Error).message === 'Execution interrupted') {
+        self.postMessage({
+          status: 'interrupted',
+          ...errorData
+        } as WorkerMessage.IGenerationError);
+      } else {
+        self.postMessage({
+          status: 'exception',
+          ...errorData
+        } as WorkerMessage.IGenerationError);
+      }
     }
 
     for (let i = 0; i < output.length; i++) {
@@ -94,7 +113,7 @@ class Worker {
         status: 'complete',
         output: output[i].generated_text.substring(text.length),
         idToken: idTokens[i]
-      });
+      } as WorkerMessage.IComplete);
     }
   }
 
@@ -106,7 +125,10 @@ class Worker {
     model = new CompletionModel({
       model: data.model,
       onLoadingProgress: (progress: any) => {
-        self.postMessage({ ...progress, model: data.model });
+        self.postMessage({
+          ...progress,
+          model: data.model
+        } as WorkerMessage.IProgress);
       }
     });
     this._completionModels.set(data.model, model);
