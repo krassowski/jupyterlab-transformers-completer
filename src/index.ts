@@ -128,9 +128,9 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
         },
         generateN: {
           minimum: 1,
-          maximum: 10,
           type: 'number',
-          title: 'Number of candidates'
+          title: 'Candidates',
+          description: 'How many completion candidates should be generated.'
         },
         diversityPenalty: {
           type: 'number',
@@ -143,7 +143,7 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
           description: '1.0 means not penalty.'
         },
         // TODO: characters are a poor proxy for number of tokens when whitespace are many (though a strictly conservative one).
-        // Words could be better but can be over-optimistic - one word canb e several tokens).
+        // Words could be better but can be over-optimistic - one word can be several tokens).
         maxContextWindow: {
           title: 'Context window',
           minimum: 1,
