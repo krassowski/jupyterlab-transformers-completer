@@ -189,3 +189,4 @@ namespace CompletionModel {
 
 export const worker = new Worker();
 self.addEventListener('message', worker.handleMessage.bind(worker));
+self.postMessage({ status: 'worker-started' } as WorkerMessage.IWorkerStarted);

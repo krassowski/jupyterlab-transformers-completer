@@ -36,6 +36,9 @@ const DEFAULT_SETTINGS: ISettings = {
 };
 
 class TransformersInlineProvider implements IInlineCompletionProvider {
+  readonly identifier = '@krassowski/inline-completer';
+  readonly name = 'Transformers powered completions';
+
   constructor(protected options: TransformersInlineProvider.IOptions) {
     try {
       SharedArrayBuffer;
@@ -51,14 +54,14 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
       'message',
       this._onMessageReceived.bind(this)
     );
-    this._postMessage({
-      action: 'initializeBuffer',
-      buffer: buffer
+    this._workerStarted.promise.then(() => {
+      this._postMessage({
+        action: 'initializeBuffer',
+        buffer: buffer
+      });
     });
   }
-
-  readonly identifier = '@krassowski/inline-completer';
-  readonly name = 'Transformers powered completions';
+  private _workerStarted = new PromiseDelegate();
 
   get schema(): ISettingRegistry.IProperty {
     // full list of models: https://huggingface.co/models?pipeline_tag=text-generation&library=transformers.js
@@ -153,8 +156,9 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     };
   }
 
-  configure(settings: { [property: string]: JSONValue }): void {
+  async configure(settings: { [property: string]: JSONValue }): Promise<void> {
     this._settings = settings as any as ISettings;
+    await this._workerStarted.promise;
     this._switchModel(this._settings.codeModel, 'code');
     this._switchModel(this._settings.textModel, 'text');
   }
@@ -220,13 +224,13 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
    */
   private _onMessageReceived(event: MessageEvent) {
     const data = event.data;
-    // TODO: maybe only tick on update?
-    this._tickWorker();
     switch (data.status) {
-      case 'initiate': {
+      case 'worker-started':
+        this._msgWorkerStarted(data as WorkerMessage.IWorkerStarted);
+        break;
+      case 'initiate':
         this._msgInitiate(data as WorkerMessage.IInitiate);
         break;
-      }
       case 'progress':
         this._msgProgress(data as WorkerMessage.IProgress);
         break;
@@ -249,6 +253,10 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
         this._msgException(data as WorkerMessage.IGenerationError);
         break;
     }
+  }
+
+  private _msgWorkerStarted(_data: WorkerMessage.IWorkerStarted) {
+    this._workerStarted.resolve(undefined);
   }
 
   private _msgInitiate(data: WorkerMessage.IInitiate) {
@@ -296,6 +304,7 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
   }
 
   private _msgUpdate(data: WorkerMessage.IUpdate) {
+    this._tickWorker();
     const token = data.idToken;
     const delegate = this._streamPromises.get(token);
     if (!delegate) {

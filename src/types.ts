@@ -55,6 +55,9 @@ export namespace ClientMessage {
 }
 
 export namespace WorkerMessage {
+  export interface IWorkerStarted {
+    status: 'worker-started';
+  }
   interface IModelLoadingMessage {
     model: string;
     file: string;
