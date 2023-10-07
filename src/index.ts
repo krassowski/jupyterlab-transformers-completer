@@ -15,6 +15,7 @@ import { Notification, showErrorMessage } from '@jupyterlab/apputils';
 import { JSONValue, PromiseDelegate } from '@lumino/coreutils';
 import type { ClientMessage, WorkerMessage, IModelSettings } from './types';
 import { formatFileSize } from './utils';
+import { IModelInfo, codeModels, textModels } from './models';
 
 interface ISettings extends IModelSettings {
   codeModel: string;
@@ -62,41 +63,35 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     });
   }
   private _workerStarted = new PromiseDelegate();
+  private _formatModelOptions(model: IModelInfo) {
+    const modelName = model.repo.replace('Xenova/', '');
+    return {
+      const: model.repo,
+      title: `${modelName} (${model.licence})`
+    };
+  }
 
   get schema(): ISettingRegistry.IProperty {
     // full list of models: https://huggingface.co/models?pipeline_tag=text-generation&library=transformers.js
-    const codeModels = [
-      'none',
-      'Xenova/tiny_starcoder_py',
-      'Xenova/codegen-350M-mono',
-      'Xenova/codegen-350M-multi',
-      'Xenova/starcoderbase-1b-sft',
-      'Xenova/WizardCoder-1B-V1.0'
-    ];
-    const textModels = [
-      'none',
-      'Xenova/gpt2',
-      'Xenova/TinyLLama-v0',
-      'Xenova/LaMini-GPT-124M',
-      'Xenova/LaMini-Cerebras-111M',
-      'Xenova/opt-125m',
-      'Xenova/pythia-70m-deduped',
-      'Xenova/distilgpt2',
-      'Xenova/llama-160m'
-    ];
     return {
       properties: {
         codeModel: {
           title: 'Code model',
           description: 'Model used in code cells and code files.',
-          enum: codeModels,
+          oneOf: [
+            { const: 'none', title: 'No model' },
+            ...codeModels.map(this._formatModelOptions)
+          ],
           type: 'string'
         },
         textModel: {
           title: 'Text model',
           description:
             'Model used in Markdown (cells and files) and plain text files.',
-          enum: textModels,
+          oneOf: [
+            { const: 'none', title: 'No model' },
+            ...textModels.map(this._formatModelOptions)
+          ],
           type: 'string'
         },
         // TODO temperature and friends should be per-model
@@ -167,14 +162,14 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     request: CompletionHandler.IRequest,
     context: IInlineCompletionContext
   ): Promise<IInlineCompletionList<IInlineCompletionItem>> {
-    await this._ready.promise;
-    this._abortPrevious();
-    this._streamPromises = new Map();
-
     const textMimeTypes = ['text/x-markdown', 'text/plain'];
     const isText = textMimeTypes.includes(request.mimeType);
     // TODO add a setting to only invoke on text if explicitly asked (triggerKind = invoke)
     const model = isText ? this._settings.textModel : this._settings.codeModel;
+
+    await this._ready[model].promise;
+    this._abortPrevious();
+    this._streamPromises = new Map();
 
     const prefix = this._prefixFromRequest(request);
     const items: IInlineCompletionItem[] = [];
@@ -260,7 +255,7 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
   }
 
   private _msgInitiate(data: WorkerMessage.IInitiate) {
-    this._ready = new PromiseDelegate();
+    this._ready[data.model] = new PromiseDelegate();
     const message = `Loading ${data.model}: ${data.file}`;
     if (this._loadingNotifications[data.model]) {
       Notification.update({
@@ -300,7 +295,7 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
 
   private _msgReady(data: WorkerMessage.IReady) {
     Notification.dismiss(this._loadingNotifications[data.model]);
-    this._ready.resolve(void 0);
+    this._ready[data.model].resolve(void 0);
   }
 
   private _msgUpdate(data: WorkerMessage.IUpdate) {
@@ -415,7 +410,7 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
   private _loadingNotifications: Record<string, string> = {};
   private _settings: ISettings = DEFAULT_SETTINGS;
   private _streamPromises: Map<string, PromiseDelegate<IStream>> = new Map();
-  private _ready = new PromiseDelegate();
+  private _ready: Record<string, PromiseDelegate<void>> = {};
   private _tokenCounter = 0;
   private _sharedArray: Int32Array;
   private _currentGeneration = 0;
