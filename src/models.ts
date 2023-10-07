@@ -4,6 +4,10 @@ export interface IModelInfo {
   humanEval?: number;
 }
 
+/**
+ * To update the list of models, compare with:
+ * https://huggingface.co/models?pipeline_tag=text-generation&library=transformers.js
+ */
 export const codeModels: IModelInfo[] = [
   {
     repo: 'Xenova/tiny_starcoder_py',

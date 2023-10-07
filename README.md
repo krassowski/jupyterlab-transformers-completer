@@ -4,14 +4,14 @@
 [![Github Actions Status](https://github.com/krassowski/jupyterlab-transformers-completer/workflows/Build/badge.svg)](https://github.com/krassowski/jupyterlab-transformers-completer/actions/workflows/build.yml)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/krassowski/jupyterlab-transformers-completer/main?urlpath=lab)
 
-Inline completion provider using `tranformers.js` for JupyterLab
+Inline completion provider using `transformers.js` for JupyterLab
 
 This extension is currently aimed for developers of JupyterLab extensions (and advanced JupyterLab users) to explore the proof of concept integration of the new inline completions API slotted for JupyterLab 4.1.
 
-All models linked from this demonstration run exclusively **in your browser**; and are :
+All models linked from this demonstration run exclusively **in your browser**, and are:
 
-- order of magnitudes smaller than the state-of-the-art models
-- producing correspondingly lower accuracy of suggestions/answers
+- order of magnitudes smaller than the state-of-the-art models,
+- producing correspondingly lower accuracy of suggestions/answers.
 
 These models are not vetted for accuracy nor propriety and should not be deployed without further validation.
 
@@ -21,6 +21,8 @@ These models are not vetted for accuracy nor propriety and should not be deploye
 - A browser supporting:
   - [`SharedArrayBuffer`](https://caniuse.com/sharedarraybuffer)
   - [Web Workers](https://caniuse.com/webworkers)
+  - Dynamic import for workers (behind `dom.workers.modules.enabled` in Firefox)
+  - (optional, for faster inference) [WebGPU](https://caniuse.com/webgpu) (behind `dom.webgpu.enabled` in Firefox)
 - `jupyter-server` to enable additional headers (`jupyverse` and `jupyterlite` not tested yet)
 
 When this extension is enabled, the server will return additional headers,

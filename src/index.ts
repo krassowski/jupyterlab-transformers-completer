@@ -62,17 +62,8 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
       });
     });
   }
-  private _workerStarted = new PromiseDelegate();
-  private _formatModelOptions(model: IModelInfo) {
-    const modelName = model.repo.replace('Xenova/', '');
-    return {
-      const: model.repo,
-      title: `${modelName} (${model.licence})`
-    };
-  }
 
   get schema(): ISettingRegistry.IProperty {
-    // full list of models: https://huggingface.co/models?pipeline_tag=text-generation&library=transformers.js
     return {
       properties: {
         codeModel: {
@@ -347,6 +338,17 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
   }
 
   /**
+   * Summarise model for display in user settings.
+   */
+  private _formatModelOptions(model: IModelInfo) {
+    const modelName = model.repo.replace('Xenova/', '');
+    return {
+      const: model.repo,
+      title: `${modelName} (${model.licence})`
+    };
+  }
+
+  /**
    * Send a tick to the worker with number of current generation counter.
    */
   private _tickWorker() {
@@ -403,17 +405,18 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     this._currentModels[type] = newModel;
   }
 
+  private _currentGeneration = 0;
   private _currentModels: {
     code?: string;
     text?: string;
   } = {};
   private _loadingNotifications: Record<string, string> = {};
-  private _settings: ISettings = DEFAULT_SETTINGS;
-  private _streamPromises: Map<string, PromiseDelegate<IStream>> = new Map();
   private _ready: Record<string, PromiseDelegate<void>> = {};
-  private _tokenCounter = 0;
+  private _settings: ISettings = DEFAULT_SETTINGS;
   private _sharedArray: Int32Array;
-  private _currentGeneration = 0;
+  private _streamPromises: Map<string, PromiseDelegate<IStream>> = new Map();
+  private _tokenCounter = 0;
+  private _workerStarted = new PromiseDelegate();
 }
 
 namespace TransformersInlineProvider {
