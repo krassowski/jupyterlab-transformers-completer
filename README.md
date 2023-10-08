@@ -15,6 +15,8 @@ All models linked from this demonstration run exclusively **in your browser**, a
 
 These models are not vetted for accuracy nor propriety and should not be deployed without further validation.
 
+![demo-transformers](https://github.com/krassowski/jupyterlab-transformers-completer/assets/5832902/a99824fd-f476-4d80-bd4f-9311173f2300)
+
 ## Requirements
 
 - JupyterLab >= 4.1.0 (not yet released)
