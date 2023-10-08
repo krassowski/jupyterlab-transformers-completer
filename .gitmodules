@@ -1,0 +1,4 @@
+[submodule "jupyterlab"]
+	path = jupyterlab
+	url = https://github.com/krassowski/jupyterlab
+	branch = inline-completion-api
