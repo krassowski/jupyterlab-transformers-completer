@@ -30,6 +30,8 @@ _("git", "submodule", "update", "--init")
 
 cwd = os.getcwd()
 os.chdir('jupyterlab')
+_("rm", ".git")
+_("mkdir", "-p", ".git/hooks")
 _("python", "-m", "pip", "install", "-e", ".")
 _("jlpm", "install")
 _("jlpm", "build")
