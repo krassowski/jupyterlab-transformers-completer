@@ -80,10 +80,6 @@ export const textModels: IModelInfo[] = [
     licence: 'apache-2.0'
   },
   {
-    repo: 'Xenova/distilgpt2',
-    licence: 'apache-2.0'
-  },
-  {
     repo: 'Xenova/llama-160m',
     licence: 'other'
   }

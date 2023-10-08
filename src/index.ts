@@ -153,7 +153,14 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
     request: CompletionHandler.IRequest,
     context: IInlineCompletionContext
   ): Promise<IInlineCompletionList<IInlineCompletionItem>> {
-    const textMimeTypes = ['text/x-markdown', 'text/plain'];
+    const textMimeTypes = [
+      'text/x-ipythongfm',
+      'text/x-markdown',
+      'text/plain',
+      'text/x-rst',
+      'text/x-latex',
+      'text/x-rsrc'
+    ];
     const isText = textMimeTypes.includes(request.mimeType);
     // TODO add a setting to only invoke on text if explicitly asked (triggerKind = invoke)
     const model = isText ? this._settings.textModel : this._settings.codeModel;
