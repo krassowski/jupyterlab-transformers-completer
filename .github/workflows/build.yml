@@ -28,6 +28,8 @@ jobs:
         # python -m pip install -e .
         jlpm install
         jlpm build
+        jlpm build:prod
+        jupyter lab build
 
     - name: Lint the extension
       run: |
