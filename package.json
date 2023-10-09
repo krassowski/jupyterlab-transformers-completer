@@ -98,6 +98,7 @@
         "node_modules",
         "dist",
         "coverage",
+        "jupyterlab",
         "**/*.d.ts"
     ],
     "eslintConfig": {

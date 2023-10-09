@@ -34,7 +34,7 @@ _("rm", ".git")
 _("mkdir", "-p", ".git/hooks")
 _("python", "-m", "pip", "install", "-e", ".")
 _("jlpm", "install")
-_("jlpm", "build:dev:prod:minimize")
+_("jlpm", "build:dev:prod")
 os.chdir(cwd)
 
 # verify the environment is self-consistent before even starting
