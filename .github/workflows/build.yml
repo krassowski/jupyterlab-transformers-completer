@@ -75,7 +75,7 @@ jobs:
         sudo rm -rf $(which node)
         sudo rm -rf $(which node)
 
-        pip install --pre "jupyterlab>=4.1.0a3,<5" jupyterlab-transformers-completer*.whl
+        pip install --pre "jupyterlab>=4.1.0a3,<5" jupyterlab_transformers_completer*.whl
 
         jupyter server extension list
         jupyter server extension list 2>&1 | grep -ie "jupyterlab_transformers_completer.*OK"
