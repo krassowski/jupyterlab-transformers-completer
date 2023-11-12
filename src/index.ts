@@ -161,7 +161,7 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
       'text/x-latex',
       'text/x-rsrc'
     ];
-    const isText = textMimeTypes.includes(request.mimeType);
+    const isText = textMimeTypes.includes(request.mimeType!);
     // TODO add a setting to only invoke on text if explicitly asked (triggerKind = invoke)
     const model = isText ? this._settings.textModel : this._settings.codeModel;
 
