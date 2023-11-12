@@ -43,8 +43,7 @@ Cross-Origin-Embedder-Policy: require-corp
 To install the extension, execute:
 
 ```bash
-pip install git+https://github.com/krassowski/jupyterlab-transformers-completer.git#egg=jupyterlab-transformers-completer
-
+pip install -U 'jupyterlab>=4.1.0a3' jupyterlab-transformers-completer
 ```
 
 ## Uninstall
