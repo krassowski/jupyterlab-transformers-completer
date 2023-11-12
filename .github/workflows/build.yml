@@ -21,15 +21,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m pip install -U "jupyterlab>=4.0.0,<5"
-        python -m pip install hatch build
-        cd jupyterlab
-        # see https://github.com/jupyterlab/hatch-jupyter-builder/issues/131
-        # python -m pip install -e .
-        jlpm install
-        jlpm build
-        jlpm build:prod
-        jupyter lab build
+        python -m pip install -U --pre "jupyterlab>=4.1.0a3,<5"
 
     - name: Lint the extension
       run: |
@@ -83,7 +75,7 @@ jobs:
         sudo rm -rf $(which node)
         sudo rm -rf $(which node)
 
-        pip install "jupyterlab>=4.0.0,<5" jupyterlab-transformers-completer*.whl
+        pip install --pre "jupyterlab>=4.1.0a3,<5" jupyterlab-transformers-completer*.whl
 
         jupyter server extension list
         jupyter server extension list 2>&1 | grep -ie "jupyterlab_transformers_completer.*OK"
