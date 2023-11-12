@@ -52,7 +52,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: extension-artifacts
-        path: dist/jupyterlab-transformers-completer*
+        path: dist/jupyterlab_transformers_completer*
         if-no-files-found: error
 
   test_isolated:
