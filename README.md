@@ -19,7 +19,7 @@ These models are not vetted for accuracy nor propriety and should not be deploye
 
 ## Requirements
 
-- JupyterLab >= 4.1.0 (not yet released)
+- JupyterLab >= 4.1.0 or Jupyter Notebook >= 7.1.0 (not yet released)
 - A browser supporting:
   - [`SharedArrayBuffer`](https://caniuse.com/sharedarraybuffer)
   - [Web Workers](https://caniuse.com/webworkers)
