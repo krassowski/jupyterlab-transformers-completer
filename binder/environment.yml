@@ -13,7 +13,7 @@ dependencies:
   # runtime dependencies
   - python >=3.10,<3.11.0a0
   - jupyterlab >=4.1.0,<5
-  - jupyterlab-server >=2.25.2
+  - jupyterlab_server >=2.25.2
   # lab dev
   - hatch
   - build
