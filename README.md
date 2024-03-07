@@ -6,7 +6,7 @@
 
 Inline completion provider using `transformers.js` for JupyterLab
 
-This extension is currently aimed for developers of JupyterLab extensions (and advanced JupyterLab users) to explore the proof of concept integration of the new inline completions API slotted for JupyterLab 4.1.
+This extension is currently aimed for developers of JupyterLab extensions (and advanced JupyterLab users) to explore the proof of concept integration of the new inline completions API added in JupyterLab 4.1.
 
 All models linked from this demonstration run exclusively **in your browser**, and are:
 
@@ -19,7 +19,7 @@ These models are not vetted for accuracy nor propriety and should not be deploye
 
 ## Requirements
 
-- JupyterLab >= 4.1.0 or Jupyter Notebook >= 7.1.0 (not yet released)
+- JupyterLab >= 4.1.0 or Jupyter Notebook >= 7.1.0
 - A browser supporting:
   - [`SharedArrayBuffer`](https://caniuse.com/sharedarraybuffer)
   - [Web Workers](https://caniuse.com/webworkers)
