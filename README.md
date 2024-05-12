@@ -6,7 +6,7 @@
 
 Inline completion provider using `transformers.js` for JupyterLab
 
-This extension is currently aimed for developers of JupyterLab extensions (and advanced JupyterLab users) to explore the proof of concept integration of the new inline completions API added in JupyterLab 4.1.
+This extension is aimed for developers of JupyterLab extensions (and advanced JupyterLab users) to explore the integration of the inline completions API added in JupyterLab 4.1.
 
 All models linked from this demonstration run exclusively **in your browser**, and are:
 
@@ -43,7 +43,7 @@ Cross-Origin-Embedder-Policy: require-corp
 To install the extension, execute:
 
 ```bash
-pip install -U 'jupyterlab>=4.1.0a3' jupyterlab-transformers-completer
+pip install -U 'jupyterlab>=4.1.0' jupyterlab-transformers-completer
 ```
 
 ## Uninstall
