@@ -17,6 +17,18 @@ These models are not vetted for accuracy nor propriety and should not be deploye
 
 ![demo-transformers](https://github.com/krassowski/jupyterlab-transformers-completer/assets/5832902/c81ca9c1-925d-498d-8650-520f8a570f99)
 
+### Usage
+
+1. Go to Settings → Inline Completer → choose the models for code (in code cells and scripts) and text (in markdown cells and plain files) generation.
+2. The models will be downloaded, compiled, and cached in your browser as indicated by pop-up notifications in bottom right corner.
+3. Start typing a few words in the code cell or Markdown cell and observe the suggestions; hover over to see shortcuts.
+4. Adjust model configuration in settings as needed; in particular increasing the repetition penalty, adjusting temperature and top _k_ is recommended.
+
+### Known issues
+
+- Sometimes it is required to go to settings after installation and modify settings to trigger model download and compilation
+- Sometimes the browser will cache a faulty (e.g not fully downloaded) file resulting in Syntax Error when parsing; you can try in an incognito/private mode to confirm that this is transient and clear browser cache to remove such file.
+
 ## Requirements
 
 - JupyterLab >= 4.1.0 or Jupyter Notebook >= 7.1.0
