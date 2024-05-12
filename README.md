@@ -1,7 +1,7 @@
 # jupyterlab-transformers-completer
 
 [![Extension status](https://img.shields.io/badge/status-experimental-red 'not ready to be used')](https://jupyterlab-contrib.github.io/)
-[![Github Actions Status](https://github.com/krassowski/jupyterlab-transformers-completer/workflows/Build/badge.svg)](https://github.com/krassowski/jupyterlab-transformers-completer/actions/workflows/build.yml)
+[![Build](https://github.com/krassowski/jupyterlab-transformers-completer/actions/workflows/build.yml/badge.svg)](https://github.com/krassowski/jupyterlab-transformers-completer/actions/workflows/build.yml)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/krassowski/jupyterlab-transformers-completer/main?urlpath=lab)
 
 Inline completion provider using `transformers.js` for JupyterLab
