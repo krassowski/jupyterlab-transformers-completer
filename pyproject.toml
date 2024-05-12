@@ -1,5 +1,11 @@
 [build-system]
-requires = ["hatchling>=1.5.0", "jupyterlab>=4.1.0,<5", "hatch-nodejs-version>=0.3.2"]
+requires = [
+    "hatchling>=1.5.0",
+    "jupyterlab>=4.1.0,<5",
+    "hatch-nodejs-version>=0.3.2",
+    # https://github.com/conda-forge/hatch-feedstock/pull/22#issuecomment-2106302514
+    "hatch<1.10.0"
+]
 build-backend = "hatchling.build"
 
 [project]
