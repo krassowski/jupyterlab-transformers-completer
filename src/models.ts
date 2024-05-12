@@ -82,5 +82,13 @@ export const textModels: IModelInfo[] = [
   {
     repo: 'Xenova/llama-160m',
     licence: 'other'
+  },
+  {
+    repo: 'Xenova/Qwen1.5-0.5B-Chat',
+    licence: 'tongyi-qianwen-research'
+  },
+  {
+    repo: 'Xenova/bloom-560m',
+    licence: 'bigscience-bloom-rail-1.0'
   }
 ];

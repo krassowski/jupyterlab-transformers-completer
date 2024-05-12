@@ -1,6 +1,6 @@
 {
     "name": "@jupyterlab/transformers-completer",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "Inline completion provider using tranformers.js for JupyterLab.",
     "keywords": [
         "jupyter",
@@ -56,7 +56,7 @@
     "dependencies": {
         "@jupyterlab/application": "^4.1.0",
         "@jupyterlab/completer": "^4.1.0",
-        "@xenova/transformers": "~2.6.2"
+        "@xenova/transformers": "~2.17.1"
     },
     "devDependencies": {
         "@jupyterlab/builder": "^4.1.0",
