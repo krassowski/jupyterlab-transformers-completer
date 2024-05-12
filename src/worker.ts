@@ -5,16 +5,7 @@ import type {
   WorkerMessage
 } from './types';
 
-// Note: neither importScripts nor module import worked, see:
-// https://github.com/webpack/webpack/issues/16633
-// https://github.com/webpack/webpack/issues/16173
-// https://github.com/jupyterlab/jupyterlab/issues/10197
-const transformers = (await import(
-  /* webpackIgnore: true */
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore
-  'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.2'
-)) as transformersModule;
+const transformers = await require('@xenova/transformers/dist/transformers');
 
 class Worker {
   async handleMessage(event: MessageEvent) {
@@ -137,7 +128,13 @@ class Worker {
 
   private _configure(data: Message.IConfigure) {
     // Allow to download the model from the hub.
-    transformers.env.allowLocalModels = data.allowLocalModels;
+    (transformers as transformersModule).env.allowLocalModels =
+      data.allowLocalModels;
+    (transformers as transformersModule).env.allowRemoteModels =
+      data.allowRemoteModels;
+    (transformers as transformersModule).env.localModelPath =
+      data.localModelPath;
+    (transformers as transformersModule).env.remoteHost = data.remoteHost;
   }
 
   private _initializeBuffer(data: Message.IInitializeBuffer) {

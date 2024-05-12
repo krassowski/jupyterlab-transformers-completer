@@ -13,11 +13,16 @@ import {
 import type { ISettingRegistry } from '@jupyterlab/settingregistry';
 import { Notification, showErrorMessage } from '@jupyterlab/apputils';
 import { JSONValue, PromiseDelegate } from '@lumino/coreutils';
-import type { ClientMessage, WorkerMessage, IModelSettings } from './types';
+import type {
+  ClientMessage,
+  WorkerMessage,
+  IModelSettings,
+  ITransformersSettings
+} from './types';
 import { formatFileSize } from './utils';
 import { IModelInfo, codeModels, textModels } from './models';
 
-interface ISettings extends IModelSettings {
+interface ISettings extends IModelSettings, ITransformersSettings {
   codeModel: string;
   textModel: string;
   maxContextWindow: number;
@@ -33,7 +38,11 @@ const DEFAULT_SETTINGS: ISettings = {
   generateN: 2,
   maxContextWindow: 512,
   diversityPenalty: 1,
-  repetitionPenalty: 1
+  repetitionPenalty: 1,
+  allowLocalModels: false,
+  allowRemoteModels: true,
+  remoteHost: 'https://huggingface.co/',
+  localModelPath: '/models/'
 };
 
 class TransformersInlineProvider implements IInlineCompletionProvider {
@@ -136,6 +145,31 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
           type: 'number',
           description:
             'At most how many characters should be provided to the model. Smaller context results in faster generation at a cost of less accurate suggestions.'
+        },
+        allowLocalModels: {
+          type: 'boolean',
+          title: 'Check Local Model Database',
+          default: false,
+          description:
+            'Whether to allow downloading models from local database of models. If set to false (default) the models will be downloaded from remote host.'
+        },
+        allowRemoteModels: {
+          type: 'boolean',
+          title: 'Check Remote Model Database',
+          default: true,
+          description:
+            'Whether to allow downloading models from remote database of models.'
+        },
+        localModelPath: {
+          type: 'string',
+          title: 'Local Model Database Path',
+          default: '/models/'
+        },
+        remoteHost: {
+          type: 'string',
+          title: 'Remote Host',
+          description: 'The remote host from which to download the models.',
+          default: 'https://huggingface.co/'
         }
       },
       default: DEFAULT_SETTINGS as any
@@ -145,6 +179,13 @@ class TransformersInlineProvider implements IInlineCompletionProvider {
   async configure(settings: { [property: string]: JSONValue }): Promise<void> {
     this._settings = settings as any as ISettings;
     await this._workerStarted.promise;
+    this._postMessage({
+      action: 'configure',
+      allowLocalModels: this._settings.allowLocalModels,
+      allowRemoteModels: this._settings.allowRemoteModels,
+      localModelPath: this._settings.localModelPath,
+      remoteHost: this._settings.remoteHost
+    });
     this._switchModel(this._settings.codeModel, 'code');
     this._switchModel(this._settings.textModel, 'text');
   }

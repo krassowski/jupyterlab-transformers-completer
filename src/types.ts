@@ -19,13 +19,16 @@ export interface IModelSettings {
   generateN: number;
 }
 
+export interface ITransformersSettings {
+  allowLocalModels: (typeof env)['allowLocalModels'];
+  allowRemoteModels: (typeof env)['allowRemoteModels'];
+  remoteHost: (typeof env)['remoteHost'];
+  localModelPath: (typeof env)['localModelPath'];
+}
+
 export namespace ClientMessage {
-  export interface IConfigure {
+  export interface IConfigure extends ITransformersSettings {
     action: 'configure';
-    allowLocalModels: (typeof env)['allowLocalModels'];
-    allowRemoteModels: (typeof env)['allowRemoteModels'];
-    remoteHost: (typeof env)['remoteHost'];
-    localModelPath: (typeof env)['localModelPath'];
   }
   export interface IInitializeBuffer {
     action: 'initializeBuffer';
