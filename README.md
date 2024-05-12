@@ -28,14 +28,13 @@ These models are not vetted for accuracy nor propriety and should not be deploye
 - `jupyter-server` to enable additional headers (`jupyverse` and `jupyterlite` not tested yet)
 
 When this extension is enabled, the server will return additional headers,
-which will prevent fetching external resources, for example the extension logos
-from GitHub will no longer load in the extension panel.
+which may limit fetching external resources.
 
 The additional headers are used to enable synchronous communication with WebWorker via `SharedArrayBuffer`:
 
 ```http
 Cross-Origin-Opener-Policy: same-origin,
-Cross-Origin-Embedder-Policy: require-corp
+Cross-Origin-Embedder-Policy: credentialless
 ```
 
 ## Install
