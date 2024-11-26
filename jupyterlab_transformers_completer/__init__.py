@@ -34,7 +34,7 @@ def _load_jupyter_server_extension(server_app):
     server_app.web_app.settings["headers"].update({
       # Allow access to `SharedArrayBuffer`.
       "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Embedder-Policy": "credentialless",
     })
     name = "@jupyterlab/transformers-completer"
     server_app.log.info(f"Registered {name} server extension")
